@@ -13,4 +13,4 @@ To do:
 * Support HTTPS
 * Calculate length for podcasts where duration is not provided by the feed
 * Make arguments behave more UNIXy
-* Package with a saner name
+* Package with a saner name - "PodcastCommitmentCalculator" is a bit of a mouthful to type every time you want to run the app.
