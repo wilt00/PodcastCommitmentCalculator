@@ -6,17 +6,13 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.parsers.SAXParser;
-import javax.xml.parsers.SAXParserFactory;
+import org.junit.Test;
 
-import org.xml.sax.SAXException;
 
 public class PodcastCommitmentCalculator {
 	
@@ -30,32 +26,32 @@ public class PodcastCommitmentCalculator {
 	
 	private int commitTimeSeconds;
 	private int skipped;
+	private HashSet<Podcast> skippedPodcasts = new HashSet<Podcast>();
 
 	public int getCommitTimeSeconds(){return this.commitTimeSeconds;}
-	//public Duration getCommitTime(){return this.commitTime;}
 	public int getSkipped(){return this.skipped;}
+	public HashSet<Podcast> getSkippedPodcasts(){return this.skippedPodcasts;}
 
 	public PodcastCommitmentCalculator(File file, int weeks) 
-			throws IOException, ParserConfigurationException, SAXException{
+			throws IOException, UnrecoverableParseException{
 		this.weeks = weeks;
 		this.weeksEpochOffset = Instant.now().getEpochSecond() - (weeks * 604800);
 		
 		try{
-			openList(file);
 			// feedStrings is populated with list of urls (strings) from passed file
+			openList(file);
 		}catch(IOException ioe){
 			throw ioe;
 		}
 
-		checkURLs();
 		// URLs are verified; good urls are added to feedURLs
+		this.feedURLs = FeedParser.checkURLs(this.feedStrings);
+		
 		try{
-			parseFeeds();
 			// XML files at urls are parsed, ArrayList podcasts is populated
-		}catch(ParserConfigurationException pce){
-			throw pce;
-		}catch(SAXException se){
-			throw se;
+			this.podcasts = FeedParser.parseFeeds(this.feedURLs);
+		}catch(UnrecoverableParseException upe){
+			throw upe;
 		}
 		
 		calcTime();
@@ -84,86 +80,49 @@ public class PodcastCommitmentCalculator {
 		}
 	}
 
-	private void checkURLs(){
-		for (String s : feedStrings){
-			try{
-				feedURLs.add(new URL(s));
-			}catch(MalformedURLException mue){
-				if(!s.equals("")){
-					System.out.println("\"" + s + "\" is not recognized as a valid url. Skipping");
-				}
-			}
-		}
-	}
+	
 
-	private void parseFeeds() throws ParserConfigurationException, SAXException{
-		
-		
-		
-		SAXParser saxParser = null;
-		try{
-			saxParser = SAXParserFactory.newInstance().newSAXParser();
-		}catch(ParserConfigurationException pce){
-			throw pce;
-		}catch(SAXException se){
-			throw se;
-		}
-		FeedHandler uh;
-
-		for(URL u : feedURLs){
-			System.out.println("Now parsing: " + u.toString());
-			uh = new FeedHandler();
-
-			InputStream uStream = null;
-			try{
-				uStream = u.openStream();
-				saxParser.parse(uStream, uh);
-				podcasts.add(new Podcast(uh.getTitle(), uh.getEpisodes()));
-			}catch(IOException ioe){
-				//ioe.printStackTrace();
-				if(u.toString().startsWith("https")){
-					//TODO: Support HTTPS
-					// http://www.javaworld.com/article/2077600/learn-java/java-tip-96--use-https-in-your-java-client-code.html
-					System.out.println("HTTPS is currently unsupported. Sorry. Skipping...");
-				}else{
-					System.out.println("Feed at " + u.toString() + " is unavailable. Skipping...");
-				}
-			}finally{
-				try{
-					uStream.close();
-				}catch(Exception e){}
-			}
-
-		}
-	}
+	
 
 	private void calcTime(){
 		int time = 0;
 		int skipped = 0;
 		for(Podcast p : podcasts){
+			int totalEpisodes = 0;
 			int totalDuration = 0;
+			long podAvgTime = 0;
 			for(Episode e : p.getEpisodes()){
 				if(!e.hasDate()){
+					totalEpisodes++;
 					skipped ++;
+					this.skippedPodcasts.add(p);
 				}else{
 					if(e.getDate() < this.weeksEpochOffset){
 						break;
 					}
+					totalEpisodes++;
 					
 					if(e.hasDuration()){
 						totalDuration += e.getDuration();
 					}else{
 						skipped ++;
+						this.skippedPodcasts.add(p);
 					}
 				}
 			}
-			time += Math.round(totalDuration / weeks);
+			System.out.println(p.getTitle() + ":");
+			System.out.println("\t" + totalEpisodes + " episodes in last " + this.weeks + " weeks");
+			podAvgTime = Math.round(totalDuration / weeks);
+			System.out.println("\t" + "Average weekly time: " + TimeUtils.timeString(podAvgTime));
+			time += podAvgTime;
+			
 		}
 		
 		this.commitTimeSeconds = time;
 		this.skipped = skipped;
 	}
 	
+	@Test
 	public void testFeeds(){
 		for(Podcast p : podcasts){
 			System.out.println(p.getTitle());
@@ -175,8 +134,14 @@ public class PodcastCommitmentCalculator {
 	
 	public static void main(String[] args){
 		
+		// Flags: 
+		//  -i - interactive
+		//  -w - # of weeks
+		//       multiple files
+		//       stdin
+		
+		
 		System.out.println("Welcome to the Podcast Commitment Calculator!");
-		System.out.println("Keeping you honest since 2016!");
 		System.out.println("Parsing...");
 
 		PodcastCommitmentCalculator pcc = null;
@@ -194,22 +159,28 @@ public class PodcastCommitmentCalculator {
 		}catch(NumberFormatException nfe){
 			System.out.println("Please enter a valid number of weeks to use when calculating average");
 			return;
-		}catch (Exception e){
-			//TODO: Per-exception handling?
-			e.printStackTrace();
+		}catch(UnrecoverableParseException upe){
+			System.out.println("There was a problem setting up your parser. Quitting...");
+			upe.printStackTrace();
+			return;
+		}catch(IOException ioe){
+			System.out.println("We couldn't read that file. Please specify a different file.");
 			return;
 		}
+
 		
-		//pcc.testFeeds();
+		System.out.println("\n\nEvery week, it will take you approximately:");
+		System.out.println("\t" + TimeUtils.secondsHourComponent(pcc.getCommitTimeSeconds()) + " Hours,");
+		System.out.println("\t" + TimeUtils.secondsMinuteComponent(pcc.getCommitTimeSeconds()) + " Minutes");
+		//System.out.println("\t" + (pcc.getCommitTimeSeconds() % 60) + " Seconds");
+		// ^ Might add option to add second precision in future
+		System.out.println("to listen to these podcasts\n");
 		
-		System.out.println("Every week, it will take you:");
-		System.out.println("\t" + (pcc.getCommitTimeSeconds() / 3600) + " Hours,");
-		System.out.println("\t" + ((pcc.getCommitTimeSeconds() % 3600) / 60) + " Minutes, and,");
-		System.out.println("\t" + (pcc.getCommitTimeSeconds() % 60) + " Seconds");
-		System.out.println("to listen to these podcasts");
-		
-		System.out.println("We had to skip " + pcc.getSkipped() + " podcasts because we couldn't get enough "
-				+ "information from their feed.");	
+		System.out.println("We had to skip " + pcc.getSkipped() + " episodes from these podcasts: ");
+		for(Podcast p : pcc.getSkippedPodcasts()){
+			System.out.println("\t" + p.getTitle());
+		}
+		System.out.println("because we couldn't get enough information from their feed.");	
 	}
 
 }

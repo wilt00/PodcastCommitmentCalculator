@@ -9,11 +9,13 @@ import org.xml.sax.helpers.DefaultHandler;
 class FeedHandler extends DefaultHandler {
 
 	// Sample code from http://www.tutorialspoint.com/java_xml/java_sax_parse_document.htm
-
-	boolean hasTitle;
-	boolean bTitle = false;
-	boolean bPubDate = false;
-	boolean bDuration = false;
+	
+	boolean endHeader = false;	// Indicates that items have begun; used to exclude header info
+	boolean hasTitle = false;	// Indicates that title of podcast (not of episode) has been found
+	
+	boolean bTitle = false;		// Indicates that title of episode has been found
+	boolean bPubDate = false;	// Indicates that publication date of episode has been found
+	boolean bDuration = false;	// Indicates that duration of episode has been found
 	//boolean bURL = false;
 
 	String title = null;
@@ -33,15 +35,24 @@ class FeedHandler extends DefaultHandler {
 
 	@Override
 	public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException {
-		if(qName.equalsIgnoreCase("pubdate")){
-			this.bPubDate = true;
-		}else if (qName.equalsIgnoreCase ("itunes:duration")) {
-			this.bDuration = true;
-		}else if (qName.equalsIgnoreCase("enclosure")) {
-			this.url = attributes.getValue("url");
+		
+		if(endHeader){
+			if(qName.equalsIgnoreCase("pubdate")){
+				this.bPubDate = true;
+			}else if (qName.equalsIgnoreCase ("itunes:duration")) {
+				this.bDuration = true;
+			}else if (qName.equalsIgnoreCase("enclosure")) {
+				this.url = attributes.getValue("url");
+			}
+			return;
+		}
+		
+		if(qName.equalsIgnoreCase("item")){
+			this.endHeader = true;
 		}else if (qName.equalsIgnoreCase("title") && !hasTitle){
 			this.bTitle = true;
 		}
+		
 	}
 
 	@Override
@@ -52,11 +63,11 @@ class FeedHandler extends DefaultHandler {
 			this.bTitle = false;
 			this.hasTitle = true;
 		}else if(bPubDate){
-			if(this.pubDate != null) throw new SAXException("Improperly formatted XML feed");
+			if(this.pubDate != null) throw new SAXException("Improperly formatted XML feed: \"" + new String(ch, start, length) + "\" is unexpected");
 			this.pubDate = new String(ch, start, length);
 			this.bPubDate = false;
 		}else if(bDuration){
-			if(this.duration != null) throw new SAXException("Improperly formatted XML feed");
+			if(this.duration != null) throw new SAXException("Improperly formatted XML feed: \"" + new String(ch, start, length) + "\" is unexpected");
 			this.duration = new String(ch, start, length);
 			this.bDuration = false;
 		}

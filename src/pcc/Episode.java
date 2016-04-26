@@ -7,6 +7,8 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
 
+import org.xml.sax.SAXException;
+
 class Episode {
 	// Format of <pubDate> looks like:
 	// Wed, 13 Apr 2016 19:10:00 -0400
@@ -44,14 +46,23 @@ class Episode {
 		return true;
 	}
 
-	public Episode(String dateString, String durationString, String urlString){
+	public Episode(String dateString, String durationString, String urlString) throws SAXException{
 
 		if(dateString == null){
 			this.date = -1;
 		}else{
 			// Thread safe
 			// Code from: https://stackoverflow.com/questions/6687433/convert-date-format-to-epoch
-			TemporalAccessor t = DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm:ss Z").parse(dateString);
+			int lastCharType = Character.getType(dateString.charAt(dateString.length() - 1));
+			TemporalAccessor t = null;
+			if(lastCharType == Character.UPPERCASE_LETTER || lastCharType == Character.LOWERCASE_LETTER){
+				t = DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm:ss zzz").parse(dateString);
+			}else if(lastCharType == Character.DECIMAL_DIGIT_NUMBER){
+				t = DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm:ss Z").parse(dateString);
+			}else{
+				throw new SAXException("Unexpected date formatting: " + dateString);
+			}
+			
 			LocalDateTime ldt = LocalDateTime.from(t);
 			this.date = ldt.toEpochSecond(ZoneOffset.UTC);
 			// Not bothering with time zone offset, because it doesn't matter
@@ -60,10 +71,24 @@ class Episode {
 		if(durationString == null){
 			this.duration = -1;
 		} else if(durationString.contains(":")){
-			int hours = Integer.valueOf(durationString.substring(0, 2));
-			int minutes = Integer.valueOf(durationString.substring(3, 5));
-			int seconds = Integer.valueOf(durationString.substring(6, 8));
-			this.duration = (hours * 60 * 60) + (minutes * 60) + seconds;
+			try{
+				String[] durationStringSplit = durationString.split(":");		
+				if(durationStringSplit.length >= 3){
+					int hours = Integer.valueOf(durationStringSplit[0]);
+					int minutes = Integer.valueOf(durationStringSplit[1]);
+					int seconds = Integer.valueOf(durationStringSplit[2]);
+					this.duration = (hours * 3600) + (minutes * 60) + seconds;
+				}else{
+					int minutes = Integer.valueOf(durationStringSplit[0]);
+					int seconds = Integer.valueOf(durationStringSplit[1]);
+					this.duration = (minutes * 60) + seconds;
+				}
+			}catch(NumberFormatException nfe){
+				nfe.printStackTrace();
+				System.out.println(durationString);
+				this.duration = -1;
+			}
+			
 		} else {
 			this.duration = Integer.valueOf(durationString);
 		}
