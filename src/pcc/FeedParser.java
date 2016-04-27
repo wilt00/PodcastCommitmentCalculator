@@ -32,22 +32,42 @@ class FeedParser {
 		return feedURLs;
 	}
 	
-	static ArrayList<Podcast> parseFeeds(ArrayList<URL> feedURLs) throws UnrecoverableParseException{
-		
-		SAXParser saxParser = null;
+	private static SAXParser initializeSAX() throws UnrecoverableParseException{
 		try{
-			saxParser = SAXParserFactory.newInstance().newSAXParser();
+			return SAXParserFactory.newInstance().newSAXParser();
 		}catch(ParserConfigurationException pce){
 			throw new UnrecoverableParseException("Problem encountered while setting up parser.", pce);
 		}catch(SAXException se){
 			throw new UnrecoverableParseException("Problem encountered while setting up parser.", se);
 		}
+	}
+	
+	static ArrayList<String> parseOPML(InputStream is) throws UnrecoverableParseException, IOException, SAXException{
+		SAXParser saxParser = initializeSAX();
+		// Deliberately unhandled: if exception, we're screwed anyway.
+		
+		OPMLHandler handler = new OPMLHandler();
+		try{
+			saxParser.parse(is, handler);
+		}catch(IOException ioe){
+			throw ioe;
+		}catch(SAXException se){
+			throw se;
+		}
+		return handler.getUrlStrings();
+	}
+	
+	static ArrayList<Podcast> parseFeeds(ArrayList<URL> feedURLs, long weeksEpochOffset) throws UnrecoverableParseException{
+		
+		SAXParser saxParser = initializeSAX();
+		
 		ArrayList<Podcast> podcasts = new ArrayList<Podcast>();
 		FeedHandler uh;
 
 		for(URL u : feedURLs){
 			System.out.println("Now parsing: " + u.toString());
 			uh = new FeedHandler();
+			uh.setWeeksEpochOffset(weeksEpochOffset);
 
 			InputStream uStream = null;
 			try{
@@ -56,23 +76,21 @@ class FeedParser {
 				}else{
 					uStream = u.openStream();
 				}
-				saxParser.parse(uStream, uh);
-				podcasts.add(new Podcast(uh.getTitle(), uh.getEpisodes()));
-			}catch(ResolvedURLException rue){}
-			catch(IOException ioe){
 				
-				
-				ioe.printStackTrace();
-				
-				System.out.println("Feed at " + u.toString() + " is unavailable. Skipping...");
-
-			}catch(SAXException se){
-				se.printStackTrace();
-				System.out.println("Error encountered while parsing feed. Skipping...");
-			}finally{
 				try{
-					uStream.close();
-				}catch(Exception e){}
+					saxParser.parse(uStream, uh);
+				}catch(SAXTerminatorException ste){
+					// This is expected
+				}
+				podcasts.add(new Podcast(uh.getTitle(), uh.getEpisodes(), weeksEpochOffset));
+				
+			}catch(IOException ioe){
+				System.out.println("Feed at " + u.toString() + " is unavailable. Skipping...");
+			}catch(SAXException se){
+				System.out.println("Error encountered while parsing feed. Skipping...");
+			}catch(ResolvedURLException rue){}
+			finally{
+				try{uStream.close();}catch(Exception e){}
 			}
 
 		}

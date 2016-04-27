@@ -2,8 +2,10 @@
 
 package pcc;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.net.URL;
@@ -12,12 +14,13 @@ import java.util.ArrayList;
 import java.util.HashSet;
 
 import org.junit.Test;
+import org.xml.sax.SAXException;
 
 
 public class PodcastCommitmentCalculator {
 	
 	private int weeks;
-	private long weeksEpochOffset;
+	private long weeksEpochOffset;		// The epoch time n weeks ago
 	public static final int DEFAULTWEEKS = 4;
 
 	private ArrayList<String> feedStrings = new ArrayList<String>();
@@ -33,23 +36,24 @@ public class PodcastCommitmentCalculator {
 	public HashSet<Podcast> getSkippedPodcasts(){return this.skippedPodcasts;}
 
 	public PodcastCommitmentCalculator(File file, int weeks) 
-			throws IOException, UnrecoverableParseException{
+			throws IOException, UnrecoverableParseException, SAXException{
 		this.weeks = weeks;
 		this.weeksEpochOffset = Instant.now().getEpochSecond() - (weeks * 604800);
 		
 		try{
 			// feedStrings is populated with list of urls (strings) from passed file
 			openList(file);
-		}catch(IOException ioe){
-			throw ioe;
 		}
+		catch(IOException ioe){throw ioe;}
+		catch(SAXException se){throw se;}
+		catch(UnrecoverableParseException upe){throw upe;}
 
 		// URLs are verified; good urls are added to feedURLs
 		this.feedURLs = FeedParser.checkURLs(this.feedStrings);
 		
 		try{
 			// XML files at urls are parsed, ArrayList podcasts is populated
-			this.podcasts = FeedParser.parseFeeds(this.feedURLs);
+			this.podcasts = FeedParser.parseFeeds(this.feedURLs, weeksEpochOffset);
 		}catch(UnrecoverableParseException upe){
 			throw upe;
 		}
@@ -59,24 +63,37 @@ public class PodcastCommitmentCalculator {
 
 	}
 
-	private void openList(File file) throws IOException {
+	private void openList(File file) throws IOException, SAXException, UnrecoverableParseException {
 		if(!file.canRead()){
 			throw new IOException("Cannot read file");
-		}
-		BufferedReader br = null;
-		try{
-			br = new BufferedReader(new FileReader(file));
-			String line = br.readLine();
-			while (line != null){
-				feedStrings.add(line);
-				line = br.readLine();
-			}
-		}catch(IOException ioe){
-			throw ioe;
-		}finally{
+		}	
+		
+		if(file.toString().toLowerCase().endsWith(".opml")){
+			
 			try{
-				br.close();
-			}catch(Exception e){}
+				this.feedStrings = FeedParser.parseOPML(new BufferedInputStream(new FileInputStream(file)));
+			}
+			catch(SAXException se){throw se;}
+			catch(UnrecoverableParseException upe){throw upe;}
+			
+		}else{
+			
+			BufferedReader br = null;
+			try{
+				br = new BufferedReader(new FileReader(file));
+				String line = br.readLine();
+				while (line != null){
+					feedStrings.add(line);
+					line = br.readLine();
+				}
+			}catch(IOException ioe){
+				throw ioe;
+			}finally{
+				try{
+					br.close();
+				}catch(Exception e){}
+			}
+			
 		}
 	}
 
@@ -114,6 +131,9 @@ public class PodcastCommitmentCalculator {
 			System.out.println("\t" + totalEpisodes + " episodes in last " + this.weeks + " weeks");
 			podAvgTime = Math.round(totalDuration / weeks);
 			System.out.println("\t" + "Average weekly time: " + TimeUtils.timeString(podAvgTime));
+			if(!p.getHasAllDuration()){
+				System.out.println("\tNote: this podcast feed is missing some data. Times may not be accurate.");
+			}
 			time += podAvgTime;
 			
 		}
@@ -121,6 +141,9 @@ public class PodcastCommitmentCalculator {
 		this.commitTimeSeconds = time;
 		this.skipped = skipped;
 	}
+	
+	
+	
 	
 	@Test
 	public void testFeeds(){
@@ -133,6 +156,8 @@ public class PodcastCommitmentCalculator {
 	}
 	
 	public static void main(String[] args){
+		System.out.println("Welcome to the Podcast Commitment Calculator!");
+		System.out.println("Parsing...");
 		
 		// Flags: 
 		//  -i - interactive
@@ -140,31 +165,39 @@ public class PodcastCommitmentCalculator {
 		//       multiple files
 		//       stdin
 		
-		
-		System.out.println("Welcome to the Podcast Commitment Calculator!");
-		System.out.println("Parsing...");
-
-		PodcastCommitmentCalculator pcc = null;
-
+		File feedFile = null;
 		try{
-			if(args.length >= 2){
-				pcc = new PodcastCommitmentCalculator(new File(args[0]), Integer.parseInt(args[1]));
-			}else{
-				pcc = new PodcastCommitmentCalculator(new File(args[0]),DEFAULTWEEKS);
-			}
-			
-		}catch (ArrayIndexOutOfBoundsException aioobe){
+			String feedFileString = args[0];
+			feedFile = new File(feedFileString);
+		}catch(ArrayIndexOutOfBoundsException aioobe){
 			System.out.println("Please specify a list of feeds.");
 			return;
-		}catch(NumberFormatException nfe){
-			System.out.println("Please enter a valid number of weeks to use when calculating average");
-			return;
+		}
+		
+		int weeks;
+		if(args.length >= 2){
+			try{
+				weeks = Integer.parseInt(args[1]);
+			}catch(NumberFormatException nfe){
+				System.out.println("Please enter a valid number of weeks to use when calculating average");
+				return;
+			}
+		}else{
+			weeks = DEFAULTWEEKS;
+		}
+
+		PodcastCommitmentCalculator pcc = null;
+		try{
+			pcc = new PodcastCommitmentCalculator(feedFile, weeks);		
 		}catch(UnrecoverableParseException upe){
 			System.out.println("There was a problem setting up your parser. Quitting...");
 			upe.printStackTrace();
 			return;
 		}catch(IOException ioe){
 			System.out.println("We couldn't read that file. Please specify a different file.");
+			return;
+		}catch(SAXException se){
+			System.out.println("Something is wrong with your OPML file. Unable to parse.");
 			return;
 		}
 

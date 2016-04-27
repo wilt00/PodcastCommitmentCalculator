@@ -50,7 +50,7 @@ public class TimeUtils {
 			if(hours == 0){
 				returnString += " and " + secondsC;
 			}else{
-				returnString += ", and" + secondsC;
+				returnString += ", and " + secondsC;
 			}
 			if(secondsC == 1){
 				returnString += " second, ";

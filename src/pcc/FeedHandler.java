@@ -17,6 +17,8 @@ class FeedHandler extends DefaultHandler {
 	boolean bPubDate = false;	// Indicates that publication date of episode has been found
 	boolean bDuration = false;	// Indicates that duration of episode has been found
 	//boolean bURL = false;
+	
+	long weeksEpochOffset = 0;
 
 	String title = null;
 
@@ -31,6 +33,10 @@ class FeedHandler extends DefaultHandler {
 	}
 	public ArrayList<Episode> getEpisodes(){
 		return episodes;
+	}
+	
+	public void setWeeksEpochOffset(long weo){
+		this.weeksEpochOffset = weo;
 	}
 
 	@Override
@@ -77,6 +83,16 @@ class FeedHandler extends DefaultHandler {
 	public void endElement(String uri, String localName, String qName) throws SAXException{
 		if(qName.equalsIgnoreCase("item")){
 			episodes.add(new Episode(pubDate, duration, url));
+			
+			// Episode constructor is converting string pubDate to long anyway, so may as well use object
+			Episode last = episodes.get(episodes.size() - 1);
+			if(last.hasDate()){
+				if(last.getDate() < this.weeksEpochOffset){
+					episodes.remove(episodes.size() - 1);
+					throw new SAXTerminatorException("Parsed to end of set time period");
+				}
+			}
+			
 			pubDate = null;
 			duration = null;
 			url = null;

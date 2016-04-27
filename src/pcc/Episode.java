@@ -56,9 +56,9 @@ class Episode {
 			int lastCharType = Character.getType(dateString.charAt(dateString.length() - 1));
 			TemporalAccessor t = null;
 			if(lastCharType == Character.UPPERCASE_LETTER || lastCharType == Character.LOWERCASE_LETTER){
-				t = DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm:ss zzz").parse(dateString);
+				t = DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm[:ss] zzz").parse(dateString);
 			}else if(lastCharType == Character.DECIMAL_DIGIT_NUMBER){
-				t = DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm:ss Z").parse(dateString);
+				t = DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm[:ss] Z").parse(dateString);
 			}else{
 				throw new SAXException("Unexpected date formatting: " + dateString);
 			}
