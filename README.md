@@ -7,7 +7,7 @@ Usage:
 
     PodcastCommitmentCalculator [path to file with feeds] [optional: number of weeks to use when calculating average]
 
-testfeed.txt is an example of how PCC expects feedlist file to be formatted (one feed URL per line).
+testfeed.txt is an example of how PCC expects feedlist file to be formatted (one feed URL per line). Alternatively, you can use any OPML file.
 
 If blank, the default number of weeks is 4.
 
